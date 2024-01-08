@@ -3,6 +3,7 @@ library(shiny)
 library(shinyWidgets)
 library(dplyr)
 library(ggplot2)
+options(shiny.port = 3001)
 
 enga <- read.csv('CEILSEngagementByEvent.csv', header = TRUE)
 rawcolnam <- names(enga)

@@ -8,7 +8,7 @@ library(RColorBrewer)
 library(viridis)
 library(shinythemes)
 
-# options(shiny.port = 3002)
+options(shiny.port = 3002)
 
 enga <- read.csv('./CEILSEngagementByEvent.csv', header = TRUE)
 

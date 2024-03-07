@@ -68,13 +68,28 @@ ui <- fluidPage(
           selectInput("x_var", "Select X Variable", choices = choiceList, selected = "Academic.Year"),
           # selectInput("y_var", "Select Y Variable", choices = names(enga), selected = "Hours"),
           selectInput("fill_var", "Select Fill Variable", choices = choiceList, selected = "Tenureship_Role"),
-          plotOutput("barplot")
+          plotOutput("barplot"),
         ),
         tabPanel(
           "Unique Participant Bar Graphs",
           selectInput("uniqy_var", "Select Y Variable", choices = choiceList, selected = "Division"),
           selectInput("uniqfill_var", "Select Fill Variable", choices = choiceList, selected = "Tenureship_Role"),
-          plotOutput("uniquebarplot")
+          plotOutput("uniquebarplot"),#, click="plot_click2"),
+          dataTableOutput("dynamic")
+        ),
+        tabPanel(
+          "Bubble Plot Participants",
+          selectInput("uniqbubble_var", "Select Bubble Variable", choices = choiceList, selected = "Department"),
+          # selectInput("uniqfill_var", "Select Fill Variable", choices = choiceList, selected = "Tenureship_Role"),
+          plotOutput("bubbleplot", click="plot_click"), 
+          tableOutput("bubbledata")
+        ),
+        tabPanel(
+          "Bubble Plot Percent",
+          # selectInput("uniqbubble_var", "Select Bubble Variable", choices = choiceList, selected = "Department"),
+          # selectInput("uniqfill_var", "Select Fill Variable", choices = choiceList, selected = "Tenureship_Role"),
+          plotOutput("bubbleplot_prc", click="plot_clickbbl"), 
+          tableOutput("bubbledata_prc")
         )
       )
     )
@@ -108,14 +123,12 @@ server <- function(input, output, session) {
                                                                    distinct_eventcat= n_distinct(Event.category),
                                                                    distinct_event= n_distinct(Event),
                                                                    distinct_specificevent= n_distinct(Specific.Event))
+      
   })
   
   output$barplot <- renderPlot({
     # Check if there is filtered data
     if (nrow(filtered_data()) > 0) {
-      
-      # nb.cols <- length(unique(filtered_data()[[input$fill_var]]))
-      # mycolors <- colorRampPalette(brewer.pal(8, "Set2"))(nb.cols)
 
       # Plot bar graph based on selected variables
       fig.width=8
@@ -131,7 +144,7 @@ server <- function(input, output, session) {
       text(0.5, 0.5, "Adjust filters in the sidebar to see bar graphs.", cex = 1.2, col = "gray")
     }
   })
-  
+
   
   output$uniquebarplot <- renderPlot({
     # Check if there is filtered data
@@ -151,7 +164,7 @@ server <- function(input, output, session) {
                        y = reorder(!!sym(input$uniqy_var),+distinct_participants),
                        fill=!!sym(input$uniqfill_var))) +
         geom_bar(stat = "identity") +
-        labs(title = "Number of Unique Participants", x = "Unique Count", y="Variable") +
+        labs(title = "Number of Unique Participants", x = "Unique Count", y=input$uniqy_var) +
         scale_fill_manual(values = mycolors2) +
         theme_minimal(base_size = 14)
       
@@ -160,6 +173,144 @@ server <- function(input, output, session) {
       plot(0, type = "n", axes = FALSE, xlab = "", ylab = "", main = "No data matches the selected filters.")
       text(0.5, 0.5, "Adjust filters in the sidebar to see bar graphs.", cex = 1.2, col = "gray")
     }
+  })
+  
+  output$dynamic <- renderDataTable(sum1<- filtered_data() %>%
+                                      group_by(!!sym(input$uniqy_var), !!sym(input$uniqfill_var)) %>%
+                                      summarize(distinct_participants = n_distinct(Name.1)),
+                                    options = list(pageLength = 10), 
+                                    )
+  
+  output$bubbleplot <- renderPlot({
+    # Check if there is filtered data
+    if (nrow(filtered_data()) > 0) {
+      
+      sum2<- filtered_data() %>%
+        group_by(!!sym(input$uniqbubble_var)) %>%
+        summarize(distinct_participants = n_distinct(Name.1), total_hours=sum(Hours),ave_hours_per_participant=total_hours/distinct_participants)
+    
+      
+      # calculate the percentage of faculty engaged
+      # sum2$perc_faculty <- (sum2$distinct_participants/max(sum2$distinct_participants))*100
+      sum2$sizevec <- ((log(sum2$distinct_participants)+1)/(max(log(sum2$distinct_participants)+1)/6))*3
+      # sum2$sizevec <- (((sum2$distinct_participants)+1)/(max((sum2$distinct_participants)+1)/3))*10
+
+      nb.cols <- length(unique(sum2[[input$uniqbubble_var]]))
+      mycolors2 <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
+      
+      # Plot bar graph based on selected variables
+      fig.width=8
+      fig.height=8
+      # Create scatter plot
+      
+      ggplot(sum2, aes(x = distinct_participants, 
+                       y = ave_hours_per_participant)) +
+        geom_point(size=sum2$sizevec, shape=16,color=mycolors2) +
+        geom_text_repel(aes(label = .data[[input$uniqbubble_var]]), max.overlaps = nb.cols+1) +
+        labs(title = "Engagement Bubble Plot", x = "Distinct Participants", y="Average Hours of Engagement") +
+        theme_minimal(base_size = 14)
+      
+      
+    } else {
+      # Display a message if no data passes the filters
+      plot(0, type = "n", axes = FALSE, xlab = "", ylab = "", main = "No data matches the selected filters.")
+      text(0.5, 0.5, "Adjust filters in the sidebar to see bar graphs.", cex = 1.2, col = "gray")
+    }
+  })
+  
+  output$bubbledata <- renderTable({
+    
+    sum2<- filtered_data() %>%
+      group_by(!!sym(input$uniqbubble_var)) %>%
+      summarize(distinct_participants = n_distinct(Name.1), total_hours=sum(Hours),ave_hours_per_participant=total_hours/distinct_participants)
+    
+    # calculate the percentage of faculty engaged
+    sum2$perc_faculty <- (sum2$distinct_participants/max(sum2$distinct_participants))*100
+    sum2$sizevec <- ((log(sum2$distinct_participants)+1)/(max(log(sum2$distinct_participants)+1)/6))*3
+    req(input$plot_click)
+    nearPoints(sum2, input$plot_click)
+  })
+  
+  output$bubbleplot_prc <- renderPlot({
+    # Check if there is filtered data
+    if (nrow(filtered_data()) > 0) {
+      
+      sum2<- filtered_data() %>%
+        group_by(!!sym(input$uniqbubble_var)) %>%
+        summarize(distinct_participants = n_distinct(Name.1), total_hours=sum(Hours),ave_hours_per_participant=total_hours/distinct_participants)
+      
+      
+      # calculate the percentage of faculty engaged
+      # sum2$perc_faculty <- (sum2$distinct_participants/max(sum2$distinct_participants))*100
+      # sum2$sizevec <- ((log(sum2$distinct_participants)+1)/(max(log(sum2$distinct_participants)+1)/6))*3
+      
+      # hardcoding the departmental data in
+
+      Department <- c('Atmospheric and Oceanic Sciences','Biomedical Research',
+                        'Chemistry and Biochemistry','Earth, Planetary and Space Sciences',
+                        'Ecology and Evolutionary Biology',
+                        'Institute of the Environment and Sustainability',
+                        'Institute of Society and Genetics',
+                        'Integrative Biology and Physiology','LS Core',
+                        'Mathematics','Microbiology, Immunology, and Molecular Genetics',
+                        'Molecular, Cell, and Developmental Biology','Neuroscience',
+                        'Physics and Astronomy','Program in Computing','Psychology',
+                        'Statistics')
+      TT <- c(19,0,51,27,25,14,11,19,0,51,27,25,0,60,0,64,18)
+      nonTT <- c(1,3,24,1,8,7,1,6,11,28,0,3,2,3,1,10,10)
+      facultynumbers <- data.frame(Department,TT,nonTT)
+      perc_enga <- merge(sum2,facultynumbers,by='Department')
+      perc_enga$perc_faculty <- (perc_enga$distinct_participants/(perc_enga$TT+perc_enga$nonTT))*100
+      perc_enga$sizevec <- ((log(perc_enga$distinct_participants)+1)/(max(log(perc_enga$distinct_participants)+1)/6))*3
+      
+      nb.cols <- length(unique(perc_enga[["Department"]]))
+      mycolors2 <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
+      
+      # Plot bar graph based on selected variables
+      fig.width=8
+      fig.height=8
+      # Create scatter plot
+      
+      ggplot(perc_enga, aes(x = perc_faculty, 
+                       y = ave_hours_per_participant)) +
+        geom_point(size=perc_enga$sizevec, shape=16,color=mycolors2) +
+        geom_text_repel(aes(label = Department), max.overlaps = nb.cols+1) +
+        labs(title = "Engagement Bubble Plot", x = "% of faculty", y="Average Hours of Engagement") +
+        theme_minimal(base_size = 14)
+      
+      
+    } else {
+      # Display a message if no data passes the filters
+      plot(0, type = "n", axes = FALSE, xlab = "", ylab = "", main = "No data matches the selected filters.")
+      text(0.5, 0.5, "Adjust filters in the sidebar to see bar graphs.", cex = 1.2, col = "gray")
+    }
+  })
+  
+  output$bubbledata_prc <- renderTable({
+    
+    sum2<- filtered_data() %>%
+      group_by(!!sym(input$uniqbubble_var)) %>%
+      summarize(distinct_participants = n_distinct(Name.1), total_hours=sum(Hours),ave_hours_per_participant=total_hours/distinct_participants)
+    
+    Department <- c('Atmospheric and Oceanic Sciences','Biomedical Research',
+                    'Chemistry and Biochemistry','Earth, Planetary and Space Sciences',
+                    'Ecology and Evolutionary Biology',
+                    'Institute of the Environment and Sustainability',
+                    'Institute of Society and Genetics',
+                    'Integrative Biology and Physiology','LS Core',
+                    'Mathematics','Microbiology, Immunology, and Molecular Genetics',
+                    'Molecular, Cell, and Developmental Biology','Neuroscience',
+                    'Physics and Astronomy','Program in Computing','Psychology',
+                    'Statistics')
+    TT <- c(19,0,51,27,25,14,11,19,0,51,27,25,0,60,0,64,18)
+    nonTT <- c(1,3,24,1,8,7,1,6,11,28,0,3,2,3,1,10,10)
+    facultynumbers <- data.frame(Department,TT,nonTT)
+    perc_enga <- merge(sum2,facultynumbers,by='Department')
+    perc_enga$perc_faculty <- (perc_enga$distinct_participants/(perc_enga$TT+perc_enga$nonTT))*100
+    perc_enga$sizevec <- ((log(perc_enga$distinct_participants)+1)/(max(log(perc_enga$distinct_participants)+1)/6))*3
+    
+    # req(input$plot_click)
+    nearPoints(perc_enga, input$plot_clickbbl)
   })
   
   output$filtDwnld <- downloadHandler(
@@ -179,38 +330,6 @@ server <- function(input, output, session) {
       write.csv(agg_df(), file, row.names = FALSE)
     }
   )
-  
-  # # Export filtered data to CSV on button click
-  # observeEvent(input$exportBtn, {
-  #   write.csv(filtered_data(), "exported_data.csv", row.names = FALSE)
-  #   showModal(modalDialog(
-  #     title = "Export Successful",
-  #     "Data has been exported to 'exported_data.csv'.",
-  #     easyClose = TRUE
-  #   ))
-  # })
-  # 
-  # 
-  # # Export aggregated data to CSV on button click
-  # observeEvent(input$exportBtn_agg, {
-  #   
-  #   agg_df <- filtered_data() %>% group_by(Name.1,
-  #                                           Email,
-  #                                           Position,Tenureship_Role,
-  #                                           Division,
-  #                                           Department) %>% summarize(totalhours=sum(Hours),
-  #                 distinct_years = n_distinct(Academic.Year),
-  #                 distinct_eventcat= n_distinct(Event.category),
-  #                 distinct_event= n_distinct(Event),
-  #                 distinct_specificevent= n_distinct(Specific.Event))
-  #   
-  #   write.csv(agg_df, "CEILSEngagementAggregate.csv", row.names = FALSE)
-  #   showModal(modalDialog(
-  #     title = "Export Successful",
-  #     "Data has been exported to 'CEILSEngagementAggregate.csv'.",
-  #     easyClose = TRUE
-  #   ))
-  # })
   
 }
 
